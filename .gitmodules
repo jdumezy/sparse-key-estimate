@@ -1,0 +1,6 @@
+[submodule "DualHybrid"]
+	path = DualHybrid
+	url = https://github.com/TabOg/CodedDualAttack
+[submodule "PrimalHybrid/lattice_estimator"]
+	path = PrimalHybrid/lattice_estimator
+	url = https://github.com/malb/lattice-estimator.git
