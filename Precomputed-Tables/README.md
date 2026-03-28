@@ -40,6 +40,3 @@ For example, a cell containing `19` means that the search found `q = 2^19` as th
 - an empty cell
   The entry has not been filled yet.
 
-## Scope
-
-These tables are intended as ready-to-read reference material.
