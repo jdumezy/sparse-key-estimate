@@ -18,8 +18,12 @@ from lwe_rot_primal import rot_primal_hybrid
 @dataclass(frozen=True)
 class AttackEstimate:
     name: str
-    cost: object
     security_bits: object
+    beta: object
+    d: object
+    eta: object
+    zeta: object
+    cost_text: str
 
 
 @dataclass(frozen=True)
@@ -63,15 +67,70 @@ def format_attack_name(name: str) -> str:
 
 
 def format_attack_summary(attack: AttackEstimate) -> str:
-    cost = attack.cost
-    beta = cost.get("beta", "?")
-    d = cost.get("d", "?")
-    eta = cost.get("eta", "?")
-    zeta = cost.get("zeta", cost.get("ζ", "?"))
     return (
         f"{format_attack_name(attack.name)}: "
         f"{format_bits(attack.security_bits)} bits, "
-        f"beta={beta}, d={d}, eta={eta}, zeta={zeta}"
+        f"beta={attack.beta}, d={attack.d}, eta={attack.eta}, zeta={attack.zeta}"
+    )
+
+
+def _json_value(value):
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return str(value)
+
+
+def attack_to_dict(attack: AttackEstimate) -> dict:
+    return {
+        "name": attack.name,
+        "security_bits": format_bits(attack.security_bits),
+        "beta": _json_value(attack.beta),
+        "d": _json_value(attack.d),
+        "eta": _json_value(attack.eta),
+        "zeta": _json_value(attack.zeta),
+        "cost_text": attack.cost_text,
+    }
+
+
+def _parse_bits(value: str):
+    if value == "oo":
+        return oo
+    return RR(value)
+
+
+def attack_from_dict(data: dict) -> AttackEstimate:
+    return AttackEstimate(
+        name=data["name"],
+        security_bits=_parse_bits(data["security_bits"]),
+        beta=data.get("beta", "?"),
+        d=data.get("d", "?"),
+        eta=data.get("eta", "?"),
+        zeta=data.get("zeta", "?"),
+        cost_text=data.get("cost_text", ""),
+    )
+
+
+def estimate_to_dict(estimate: SparseSecurityEstimate) -> dict:
+    return {
+        "logn": estimate.logn,
+        "logq": estimate.logq,
+        "h": estimate.h,
+        "sigma": estimate.sigma,
+        "best_security_bits": format_bits(estimate.best_security_bits),
+        "best_attack": estimate.best_attack,
+        "attacks": [attack_to_dict(attack) for attack in estimate.attacks],
+    }
+
+
+def estimate_from_dict(data: dict) -> SparseSecurityEstimate:
+    return SparseSecurityEstimate(
+        logn=data["logn"],
+        logq=data["logq"],
+        h=data["h"],
+        sigma=data["sigma"],
+        best_security_bits=_parse_bits(data["best_security_bits"]),
+        best_attack=data["best_attack"],
+        attacks=tuple(attack_from_dict(attack) for attack in data["attacks"]),
     )
 
 
@@ -114,8 +173,12 @@ def estimate_sparse_security(
     attacks = tuple(
         AttackEstimate(
             name=name,
-            cost=cost,
             security_bits=_security_bits(cost),
+            beta=cost.get("beta", "?"),
+            d=cost.get("d", "?"),
+            eta=cost.get("eta", "?"),
+            zeta=cost.get("zeta", cost.get("ζ", "?")),
+            cost_text=str(cost),
         )
         for name, cost in attack_costs
     )
@@ -148,5 +211,5 @@ def format_detailed_estimate(estimate: SparseSecurityEstimate) -> str:
     for attack in estimate.attacks:
         lines.append("")
         lines.append(f"{format_attack_name(attack.name)}:")
-        lines.append(str(attack.cost))
+        lines.append(attack.cost_text)
     return "\n".join(lines)

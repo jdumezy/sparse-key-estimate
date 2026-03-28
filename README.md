@@ -53,7 +53,7 @@ cd /path/to/sparse-key-estimate
 sage sparse_key_search.py -- --logn 13 --h 31 --sigma 3.2
 ```
 
-The default target is `128` bits. The script logs each tested `logq` so the run visibly progresses even when an estimate is slow.
+The default target is `128` bits. The script prints `ascii.txt` at startup, logs each tested `logq`, and writes computed estimator results to `results_cache.json` so repeated runs can reuse cached points.
 
 Example with an explicit security target:
 
@@ -66,6 +66,18 @@ sage sparse_key_search.py -- \
   --security-bits 192
 ```
 
+Force recomputation and disable terminal colors:
+
+```bash
+cd /path/to/sparse-key-estimate
+sage sparse_key_search.py -- \
+  --logn 13 \
+  --h 31 \
+  --sigma 3.2 \
+  --force-recompute \
+  --color never
+```
+
 The `--` after the script name is required with this Sage CLI so that the remaining flags are passed to `sparse_key_search.py` instead of being parsed by `sage` itself.
 
 Optional flags:
@@ -73,9 +85,13 @@ Optional flags:
 - `--security-bits`: target security level in bits, default `128`
 - `--min-logq`: lower bound for the search interval, default `1`
 - `--max-logq`: upper bound for the search interval, default `4096`
+- `--cache-file`: path to the JSON cache file, default `results_cache.json`
+- `--force-recompute`: ignore cached results and recompute them
+- `--color`: `auto`, `always`, or `never`, default `auto`
 - `--verbose`: print every candidate tested
 
 ## Notes
 
 - Each candidate `logq` can take time to evaluate. The search is currently serial.
+- The default result block is compact and formatted for terminal output. Use `--color never` to disable styling and `--verbose` to print detailed per-attack costs.
 - The reported security is the minimum among `primal-without-mitm`, `primal-mitm-square-root`, and `primal-mitm-estimator`.
