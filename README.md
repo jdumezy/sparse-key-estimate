@@ -15,7 +15,8 @@ This repository is a fork adapted to focus only on sparse-key estimation.
 
 Run the commands below from the repository root.
 
-This project is intended to run inside a Sage environment. Sage installations are not uniform, so the commands below are written for the packaged Python-based CLI validated on this repository:
+This project is intended to run inside a Sage environment.
+Sage installations are not uniform, so the commands below are written for the packaged Python-based CLI validated on this repository:
 
 - `sage` executable: `/usr/bin/sage`
 - Sage Python package: `/usr/lib/python3.14/site-packages/sage`
@@ -55,6 +56,9 @@ sage sparse_key_search.py -- --logn 13 --h 31 --sigma 3.2
 
 The default target is `128` bits. The script prints `ascii.txt` at startup, logs each tested `logq`, and writes computed estimator results to `results_cache.json` so repeated runs can reuse cached points.
 
+The search can use multiple worker subprocesses.
+This parallelism is done across independent `logq` evaluations, not with Python threads inside Sage.
+
 Example with an explicit security target:
 
 ```bash
@@ -63,7 +67,8 @@ sage sparse_key_search.py -- \
   --logn 13 \
   --h 31 \
   --sigma 3.2 \
-  --security-bits 192
+  --security-bits 192 \
+  --jobs 4
 ```
 
 Force recomputation and disable terminal colors:
@@ -87,11 +92,12 @@ Optional flags:
 - `--max-logq`: upper bound for the search interval, default `4096`
 - `--cache-file`: path to the JSON cache file, default `results_cache.json`
 - `--force-recompute`: ignore cached results and recompute them
+- `--jobs`: number of worker subprocesses, default `min(4, CPU count)`
 - `--color`: `auto`, `always`, or `never`, default `auto`
 - `--verbose`: print every candidate tested
 
 ## Notes
 
-- Each candidate `logq` can take time to evaluate. The search is currently serial.
+- Each candidate `logq` will take time to evaluate. The search parallelizes across independent `logq` evaluations by spawning separate Sage subprocesses.
 - The default result block is compact and formatted for terminal output. Use `--color never` to disable styling and `--verbose` to print detailed per-attack costs.
 - The reported security is the minimum among `primal-without-mitm`, `primal-mitm-square-root`, and `primal-mitm-estimator`.
