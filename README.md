@@ -6,6 +6,8 @@ This repository is a fork adapted to focus only on sparse-key estimation.
 
 If you only need ready-to-read reference values, see [Precomputed-Tables/README.md](Precomputed-Tables/README.md) and the accompanying Markdown tables in [Precomputed-Tables](Precomputed-Tables/).
 
+**WARNING:** The values given in the table are not absolute, and the claimed level of security could be lower using a better attack or finer estimator.
+
 ## Contents
 
 - `PrimalHybrid/lwe_rot_primal.py`: rotated primal-hybrid estimator adapted from the lattice estimator.

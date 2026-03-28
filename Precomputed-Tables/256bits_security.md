@@ -1,4 +1,4 @@
-# logq table for 256 bits
+# Ciphertext modulus table for 256 bits of security
 
 | logn / h | 32 | 64 | 128 | 192 | 256 | 512 | 1024 |
 | -------- | -: | -: | --: | --: | --: | --: | ---: |
