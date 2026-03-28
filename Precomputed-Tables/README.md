@@ -14,11 +14,11 @@ All tables in this directory use:
 
 ## Files
 
-- `128bits_security.md`
+- [`128bits_security.md`](128bits_security.md)
   Largest `logq` values targeting at least `128` bits of security.
-- `192bits_security.md`
+- [`192bits_security.md`](192bits_security.md)
   Largest `logq` values targeting at least `192` bits of security.
-- `256bits_security.md`
+- [`256bits_security.md`](256bits_security.md)
   Largest `logq` values targeting at least `256` bits of security.
 
 ## Table layout

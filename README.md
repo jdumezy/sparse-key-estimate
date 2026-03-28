@@ -4,7 +4,7 @@ Sparse-key security estimation based on the rotated primal-hybrid estimator and 
 
 This repository is a fork adapted to focus only on sparse-key estimation.
 
-If you only need ready-to-read reference values, see [Precomputed-Tables/README.md](/home/alter/GitHub/sparse-key-estimate/Precomputed-Tables/README.md) and the accompanying Markdown tables in [Precomputed-Tables](/home/alter/GitHub/sparse-key-estimate/Precomputed-Tables).
+If you only need ready-to-read reference values, see [Precomputed-Tables/README.md](Precomputed-Tables/README.md) and the accompanying Markdown tables in [Precomputed-Tables](Precomputed-Tables/).
 
 ## Contents
 
