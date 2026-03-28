@@ -193,13 +193,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-logq",
         type=int,
-        default=1,
+        default=18,
         help="Smallest logq to consider. Default: 1.",
     )
     parser.add_argument(
         "--max-logq",
         type=int,
-        default=4096,
+        default=2000,
         help="Largest logq to consider before stopping. Default: 4096.",
     )
     parser.add_argument(
@@ -337,6 +337,18 @@ def terminate_worker(style: TerminalStyle, logq: int, process: subprocess.Popen)
     )
 
 
+def terminate_pending_workers(style: TerminalStyle, pending: dict[int, subprocess.Popen], reason: str):
+    for logq, process in list(pending.items()):
+        process.terminate()
+        process.communicate()
+        print(
+            style.paint("[stop] ", style.dim, style.yellow)
+            + f"logq={logq} {reason}",
+            flush=True,
+        )
+    pending.clear()
+
+
 def choose_gap_probes(low: int, high: int, blocked: set[int], slots: int) -> list[int]:
     points = sorted({low, high, *[probe for probe in blocked if low < probe < high]})
     probes = []
@@ -386,15 +398,19 @@ def evaluate_uncached_candidates(args: argparse.Namespace, uncached: list[int], 
 
     pending = {}
     queue = list(uncached)
-    while queue or pending:
-        while queue and len(pending) < args.jobs:
-            logq = queue.pop(0)
-            pending[logq] = launch_worker(args, logq, style, len(pending) + 1)
+    try:
+        while queue or pending:
+            while queue and len(pending) < args.jobs:
+                logq = queue.pop(0)
+                pending[logq] = launch_worker(args, logq, style, len(pending) + 1)
 
-        for logq in wait_for_any_worker(pending):
-            process = pending.pop(logq)
-            estimate = finalize_worker_result(args, style, logq, process)
-            results[logq] = estimate
+            for logq in wait_for_any_worker(pending):
+                process = pending.pop(logq)
+                estimate = finalize_worker_result(args, style, logq, process)
+                results[logq] = estimate
+    except KeyboardInterrupt:
+        terminate_pending_workers(style, pending, "interrupted")
+        raise
     return results
 
 
@@ -441,6 +457,8 @@ def find_bounds(args: argparse.Namespace, cache: dict, style: TerminalStyle):
             next_candidate = max(args.min_logq, candidate // 2)
             if next_candidate >= candidate:
                 break
+            if next_candidate == args.min_logq and batch:
+                break
             batch.append(next_candidate)
             if next_candidate == args.min_logq:
                 break
@@ -469,60 +487,64 @@ def binary_search(args: argparse.Namespace, low_pair, high_pair, cache: dict, st
     seen = {low, high}
     pending: dict[int, subprocess.Popen] = {}
 
-    while high - low > 1:
-        print(
-            style.paint("[refine] ", style.bold, style.blue)
-            + f"interval=({low}, {high}) pending={len(pending)}",
-            flush=True,
-        )
-        while len(pending) < args.jobs:
-            blocked = seen | set(pending)
-            probes = choose_gap_probes(low, high, blocked, args.jobs - len(pending))
-            if not probes:
+    try:
+        while high - low > 1:
+            print(
+                style.paint("[refine] ", style.bold, style.blue)
+                + f"interval=({low}, {high}) pending={len(pending)}",
+                flush=True,
+            )
+            while len(pending) < args.jobs:
+                blocked = seen | set(pending)
+                probes = choose_gap_probes(low, high, blocked, args.jobs - len(pending))
+                if not probes:
+                    break
+                for probe in probes:
+                    estimate = load_cached_estimate(args, cache, probe, style)
+                    if estimate is not None:
+                        seen.add(probe)
+                        if meets_security(estimate, args.security_bits):
+                            if probe > low:
+                                low = probe
+                                low_estimate = estimate
+                        else:
+                            if probe < high:
+                                high = probe
+                                high_estimate = estimate
+                        continue
+                    pending[probe] = launch_worker(args, probe, style, len(pending) + 1)
+
+                stale = [probe for probe in pending if probe <= low or probe >= high]
+                for probe in stale:
+                    process = pending.pop(probe)
+                    terminate_worker(style, probe, process)
+
+            if high - low <= 1:
                 break
-            for probe in probes:
-                estimate = load_cached_estimate(args, cache, probe, style)
-                if estimate is not None:
-                    seen.add(probe)
-                    if meets_security(estimate, args.security_bits):
-                        if probe > low:
-                            low = probe
-                            low_estimate = estimate
-                    else:
-                        if probe < high:
-                            high = probe
-                            high_estimate = estimate
-                    continue
-                pending[probe] = launch_worker(args, probe, style, len(pending) + 1)
+            if not pending:
+                break
+
+            for probe in wait_for_any_worker(pending):
+                process = pending.pop(probe)
+                estimate = finalize_worker_result(args, style, probe, process)
+                store_estimate(args, cache, probe, estimate)
+                seen.add(probe)
+                if meets_security(estimate, args.security_bits):
+                    if probe > low:
+                        low = probe
+                        low_estimate = estimate
+                else:
+                    if probe < high:
+                        high = probe
+                        high_estimate = estimate
 
             stale = [probe for probe in pending if probe <= low or probe >= high]
             for probe in stale:
                 process = pending.pop(probe)
                 terminate_worker(style, probe, process)
-
-        if high - low <= 1:
-            break
-        if not pending:
-            break
-
-        for probe in wait_for_any_worker(pending):
-            process = pending.pop(probe)
-            estimate = finalize_worker_result(args, style, probe, process)
-            store_estimate(args, cache, probe, estimate)
-            seen.add(probe)
-            if meets_security(estimate, args.security_bits):
-                if probe > low:
-                    low = probe
-                    low_estimate = estimate
-            else:
-                if probe < high:
-                    high = probe
-                    high_estimate = estimate
-
-        stale = [probe for probe in pending if probe <= low or probe >= high]
-        for probe in stale:
-            process = pending.pop(probe)
-            terminate_worker(style, probe, process)
+    except KeyboardInterrupt:
+        terminate_pending_workers(style, pending, "interrupted")
+        raise
 
     return (low, low_estimate), (high, high_estimate)
 
@@ -627,4 +649,8 @@ def _running_as_script() -> bool:
 
 
 if _running_as_script():
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        print("\nInterrupted.", flush=True)
+        raise SystemExit(130)
