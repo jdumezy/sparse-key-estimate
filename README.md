@@ -1,53 +1,81 @@
-# On the Concrete Hardness Gap Between MLWE and LWE
+# Sparse Key Estimation
 
-This repository contains code used for:
-- rot primal hybrid estimation;
-- rot dual hybrid estimation;
-- probability simulations.
+Sparse-key security estimation based on the rotated primal-hybrid estimator and the workflow behind the sparse estimates from [On the Concrete Hardness Gap Between MLWE and LWE](https://eprint.iacr.org/2026/279.pdf) by Tabitha Ogilvie.
 
-## Repository structure
-- `PrimalHybrid/`
-  Estimation code for the primal hybrid attack on MLWE.
-  - `lwe_rot_primal.py` RotPrimalHybrid estimator
-  - `sparse_estimates.py` used to generate the sparse secret RLWE security estimates from Table 8
-  - `lattice_estimator/` we include the lattice estimator as a submodule
+This repository is a fork adapted to focus only on sparse-key estimation.
 
-- `DualHybrid/`  
-  Estimation code for the dual hybrid attack on Kyber MLWE assumptions. This folder is a git submodule based on the original [CodedDualAttack repository](https://github.com/kevin-carrier/CodedDualAttack). All my modifications are contained in `OptimizeCodedDualAttack/`.
-  In `OptimizeCodedDualAttack/`, the relevant files for RotDualHybrid are:
-  - `rot_optimizer_naive.py`
-  - `rot_utilitaries.py`
-  - `rotated_*.pkl` (initial/intermediate/final results files corresponding to the original `.pkl` files)
-  - `ring_results_full.txt` (final results used in the paper)
-  - `read_final_results.py` (parses the final results `.pkl` file)
+## Contents
 
-- `simulations/`
-  Probability simulations used in the paper.
-  - `simulations/primal/simulate_probabilities.py`
-  - `simulations/dual/simulate_probabilities.py`
+- `PrimalHybrid/lwe_rot_primal.py`: rotated primal-hybrid estimator adapted from the lattice estimator.
+- `PrimalHybrid/sparse_estimates.py`: reusable sparse-key estimation helpers.
+- `sparse_key_search.py`: CLI for searching the largest `logq` that still meets a target security level.
+- `PrimalHybrid/lattice_estimator/`: upstream lattice-estimator dependency kept as a git submodule.
 
+## Installation
 
-## Setup
-After cloning this repository, run
+Run the commands below from the repository root.
+
+This project is intended to run inside a Sage environment. Sage installations are not uniform, so the commands below are written for the packaged Python-based CLI validated on this repository:
+
+- `sage` executable: `/usr/bin/sage`
+- Sage Python package: `/usr/lib/python3.14/site-packages/sage`
+- Python version: `3.14.3`
+
+If your Sage installation uses the traditional shell wrapper instead, adjust the invocation style accordingly.
+
+1. Clone the repository.
+2. Fetch the only required submodule:
+
 ```bash
-git submodule update --init --recursive
+git submodule update --init --recursive PrimalHybrid/lattice_estimator
 ```
-to clone the required submodules.
 
-# Primal Hybrid
-After cloning and activating sage, you can run
+3. Ensure SciPy is installed in the Python environment used by `sage`.
+
+For packaged Sage installs such as the one exposing `/usr/bin/sage`, this is usually:
+
 ```bash
-cd PrimalHybrid
-python3 sparse_estimates.py
+python3 -m pip install scipy
 ```
-to generate estimates for the sparse parameter sets in that file.
 
-# Dual Hybrid
-After cloning and activating sage, you can run
+You can check this with:
+
 ```bash
-cd DualHybrid/OptimizeCodedDualAttack
-make
-python3 rot_optimizer_naive.py
+python3 -c "import sage.all; import scipy; print('ok')"
 ```
-This will take several hours to complete.
 
+## Usage
+
+Search for the largest `logq` meeting a sparse-key security target:
+
+```bash
+cd /path/to/sparse-key-estimate
+sage sparse_key_search.py -- --logn 13 --h 31 --sigma 3.2
+```
+
+The default target is `128` bits. The script logs each tested `logq` so the run visibly progresses even when an estimate is slow.
+
+Example with an explicit security target:
+
+```bash
+cd /path/to/sparse-key-estimate
+sage sparse_key_search.py -- \
+  --logn 13 \
+  --h 31 \
+  --sigma 3.2 \
+  --security-bits 192
+```
+
+The `--` after the script name is required with this Sage CLI so that the remaining flags are passed to `sparse_key_search.py` instead of being parsed by `sage` itself.
+
+Optional flags:
+
+- `--security-bits`: target security level in bits, default `128`
+- `--min-logq`: lower bound for the search interval, default `1`
+- `--max-logq`: upper bound for the search interval, default `4096`
+- `--verbose`: print every candidate tested
+
+## Notes
+
+- Each candidate `logq` can take time to evaluate. The search is currently serial.
+- The reported security is the minimum among `primal-without-mitm`, `primal-mitm-square-root`, and `primal-mitm-estimator`.
