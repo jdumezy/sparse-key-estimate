@@ -85,5 +85,5 @@ Recommended split for a machine with `C` available cores:
 
 For example, on a 96-core machine: `--table-jobs 24 --search-jobs 4`.
 
-> **Runtime note:** The full table (all logn, h, and security-level combinations at sigma=3.2) took roughly 2 days of wall-clock time on a dual-socket server with two Intel Xeon Platinum 8268 (96 threads total) using `--table-jobs 24 --search-jobs 4`.
+> **Runtime note:** The full table (all logn, h, and security-level combinations at sigma=3.2) took roughly 24 hours of wall-clock time on a dual-socket server with two Intel Xeon Platinum 8268 (96 threads total) using `--table-jobs 24 --search-jobs 4`.
 > Peak RAM usage stayed well below 64 GB despite the server having 192 GB available.
