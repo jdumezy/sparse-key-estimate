@@ -8,7 +8,7 @@ If you only need ready-to-read reference values, the [128-bit security table](Pr
 Tables for [192-bit](Precomputed-Tables/192bits_security.md) and [256-bit](Precomputed-Tables/256bits_security.md) security are also available.
 See [Precomputed-Tables/README.md](Precomputed-Tables/README.md) for conventions and how to regenerate the tables.
 
-> **Note:** The values in the tables are estimates based on the rotated primal-hybrid attack from [Ogilvie (2026)](https://eprint.iacr.org/2026/279.pdf), which is the best known attack against sparse-key LWE at the time of writing.
+> **Note:** The values in the tables are estimates based on the rotated primal-hybrid attack from [Ogilvie (2026)](https://eprint.iacr.org/2026/279.pdf).
 > Security estimates are upper bounds on what this specific attack can achieve.
 > A stronger attack or a tighter analysis could lower them.
 > They should not be treated as unconditional security guarantees.
@@ -118,6 +118,8 @@ If you use this tool or the precomputed tables in your work, please cite the pap
   url          = {https://eprint.iacr.org/2026/279}
 }
 ```
+
+A concurrent work by Hou and Jiang ([2026/366](https://eprint.iacr.org/2026/366.pdf)) proposes a related attack targeting sparse Ring-LWE; it has not been integrated here.
 
 If you use the precomputed tables or the sparse-key search tool specifically, you may also cite this repository:
 
