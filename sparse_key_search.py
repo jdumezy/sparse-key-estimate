@@ -119,13 +119,19 @@ def _worker_command(args: argparse.Namespace, logq: int) -> list[str]:
 def load_cache(cache_path: Path) -> dict:
     if not cache_path.is_file():
         return {}
-    data = json.loads(cache_path.read_text())
+    try:
+        data = json.loads(cache_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"[warn] cache file {cache_path} could not be read ({exc}), starting fresh", flush=True)
+        return {}
     return data if isinstance(data, dict) else {}
 
 
 def save_cache(cache_path: Path, cache: dict) -> None:
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
+    tmp = cache_path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
+    tmp.replace(cache_path)
 
 
 def save_result(result_path: Path, result: dict) -> None:
@@ -194,18 +200,18 @@ def parse_args() -> argparse.Namespace:
         "--min-logq",
         type=int,
         default=18,
-        help="Smallest logq to consider. Default: 1.",
+        help="Smallest logq to consider. Default: 18.",
     )
     parser.add_argument(
         "--max-logq",
         type=int,
         default=2000,
-        help="Largest logq to consider before stopping. Default: 4096.",
+        help="Largest logq to consider before stopping. Default: 2000.",
     )
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Print every evaluated point.",
+        help="Print per-attack costs for each evaluated point.",
     )
     parser.add_argument(
         "--jobs",
@@ -246,16 +252,6 @@ def parse_args() -> argparse.Namespace:
     if argv[:1] == ["--"]:
         argv = argv[1:]
     return parser.parse_args(argv)
-
-
-def estimate_candidate(logn: int, h: int, sigma: float, logq: int):
-    estimate = estimate_sparse_security(
-        logn=logn,
-        logq=logq,
-        h=h,
-        sigma=sigma,
-    )
-    return logq, estimate
 
 
 def load_cached_estimate(args: argparse.Namespace, cache: dict, logq: int, style: TerminalStyle):
@@ -327,16 +323,6 @@ def wait_for_any_worker(pending: dict[int, subprocess.Popen]):
         time.sleep(0.1)
 
 
-def terminate_worker(style: TerminalStyle, logq: int, process: subprocess.Popen):
-    process.terminate()
-    process.communicate()
-    print(
-        style.paint("[drop] ", style.dim, style.yellow)
-        + f"logq={logq} interval narrowed",
-        flush=True,
-    )
-
-
 def terminate_pending_workers(style: TerminalStyle, pending: dict[int, subprocess.Popen], reason: str):
     for logq, process in list(pending.items()):
         process.terminate()
@@ -373,180 +359,110 @@ def choose_gap_probes(low: int, high: int, blocked: set[int], slots: int) -> lis
     return sorted(probes)
 
 
-def evaluate_uncached_candidates(args: argparse.Namespace, uncached: list[int], style: TerminalStyle):
-    results = {}
-    if not uncached:
-        return results
-
-    if args.jobs <= 1 or len(uncached) == 1:
-        for logq in uncached:
-            print(
-                style.paint("[search] ", style.bold, style.yellow) + f"evaluating logq={logq}",
-                flush=True,
-            )
-            _, estimate = estimate_candidate(args.logn, args.h, args.sigma, logq)
-            results[logq] = estimate
-            print(
-                style.paint("[done] ", style.bold, style.green)
-                + f"logq={logq} security_bits={format_bits(estimate.best_security_bits)} "
-                f"best_attack={format_attack_name(estimate.best_attack)}",
-                flush=True,
-            )
-            if args.verbose:
-                print(format_detailed_estimate(estimate), flush=True)
-        return results
-
-    pending = {}
-    queue = list(uncached)
-    try:
-        while queue or pending:
-            while queue and len(pending) < args.jobs:
-                logq = queue.pop(0)
-                pending[logq] = launch_worker(args, logq, style, len(pending) + 1)
-
-            for logq in wait_for_any_worker(pending):
-                process = pending.pop(logq)
-                estimate = finalize_worker_result(args, style, logq, process)
-                results[logq] = estimate
-    except KeyboardInterrupt:
-        terminate_pending_workers(style, pending, "interrupted")
-        raise
-    return results
-
-
-def evaluate_candidates(args: argparse.Namespace, logq_values: list[int], cache: dict, style: TerminalStyle):
-    results = {}
-    candidates = sorted(set(logq_values))
-    uncached = []
-    for logq in candidates:
-        estimate = load_cached_estimate(args, cache, logq, style)
-        if estimate is not None:
-            results[logq] = estimate
-            continue
-        uncached.append(logq)
-
-    uncached_results = evaluate_uncached_candidates(args, uncached, style)
-    for logq, estimate in uncached_results.items():
-        results[logq] = estimate
-        store_estimate(args, cache, logq, estimate)
-
-    return {logq: results[logq] for logq in candidates}
-
-
 def meets_security(estimate, security_bits: float) -> bool:
     return estimate.best_security_bits != oo and estimate.best_security_bits >= RR(security_bits)
 
 
-def find_bounds(args: argparse.Namespace, cache: dict, style: TerminalStyle):
-    max_results = evaluate_candidates(args, [args.max_logq], cache, style)
-    high = args.max_logq
-    high_estimate = max_results[high]
-    if meets_security(high_estimate, args.security_bits):
-        return (high, high_estimate), None, None
+def streaming_search(args: argparse.Namespace, cache: dict, style: TerminalStyle):
+    """
+    Unified streaming binary search over [min_logq, max_logq].
 
-    current_high = high
-    while current_high > args.min_logq:
-        print(
-            style.paint("[bounds] ", style.bold, style.blue)
-            + f"current interval=[{args.min_logq}, {current_high}]",
-            flush=True,
-        )
-        batch = []
-        candidate = current_high
-        for _ in range(max(1, args.jobs)):
-            next_candidate = max(args.min_logq, candidate // 2)
-            if next_candidate >= candidate:
-                break
-            if next_candidate == args.min_logq and batch:
-                break
-            batch.append(next_candidate)
-            if next_candidate == args.min_logq:
-                break
-            candidate = next_candidate
+    Maintains a full pool of args.jobs worker subprocesses at all times.
+    As soon as any worker finishes, the known interval [low, high] is
+    tightened and a replacement worker is spawned immediately for the next
+    best probe — no idle time between rounds.
 
-        if not batch:
-            break
+    Sentinels:
+      low  = args.min_logq - 1  (exclusive lower bound, no passing logq known yet)
+      high = args.max_logq + 1  (exclusive upper bound, no failing logq known yet)
 
-        batch_results = evaluate_candidates(args, batch, cache, style)
-        for logq in sorted(batch, reverse=True):
-            estimate = batch_results[logq]
-            if meets_security(estimate, args.security_bits):
-                return (logq, estimate), (current_high, high_estimate), None
-            current_high = logq
-            high_estimate = estimate
-
-        if current_high == args.min_logq:
-            break
-
-    return None, (current_high, high_estimate), None
-
-
-def binary_search(args: argparse.Namespace, low_pair, high_pair, cache: dict, style: TerminalStyle):
-    low, low_estimate = low_pair
-    high, high_estimate = high_pair
-    seen = {low, high}
+    On exit:
+      low  == args.min_logq - 1  → no admissible logq found
+      high == args.max_logq + 1  → security target still met at the upper limit
+      otherwise                  → low is the best passing logq, high is the first failing
+    """
+    low = args.min_logq - 1
+    high = args.max_logq + 1
+    low_estimate = None
+    high_estimate = None
     pending: dict[int, subprocess.Popen] = {}
+    known: set[int] = set()  # all logq values already evaluated or in-flight
+
+    def _update_bounds(logq: int, estimate) -> None:
+        nonlocal low, high, low_estimate, high_estimate
+        if meets_security(estimate, args.security_bits):
+            if logq > low:
+                low = logq
+                low_estimate = estimate
+        else:
+            if logq < high:
+                high = logq
+                high_estimate = estimate
+
+    def _cancel_stale_workers() -> None:
+        """Terminate any pending worker whose logq is now outside (low, high)."""
+        stale = [logq for logq in list(pending) if logq <= low or logq >= high]
+        if stale:
+            terminate_pending_workers(
+                style,
+                {logq: pending.pop(logq) for logq in stale},
+                "outside refined interval",
+            )
+
+    def _fill_workers() -> None:
+        """
+        Fill free worker slots with the best uncovered probes.
+
+        Cache hits are consumed immediately (they do not occupy a slot) and
+        cause the probe selection to re-run with the updated bounds so that
+        subsequent workers target the freshest interval.
+        """
+        while high - low > 1 and len(pending) < args.jobs:
+            blocked = known  # known is a superset of pending (added before spawn)
+            free = args.jobs - len(pending)
+            candidates = choose_gap_probes(low, high, blocked, free)
+            if not candidates:
+                break
+
+            found_cache_hit = False
+            for logq in candidates:
+                est = load_cached_estimate(args, cache, logq, style)
+                if est is not None:
+                    known.add(logq)
+                    _update_bounds(logq, est)
+                    found_cache_hit = True
+                elif len(pending) < args.jobs:
+                    known.add(logq)
+                    pending[logq] = launch_worker(args, logq, style, len(pending) + 1)
+
+            # If cache hits changed the bounds, re-run choose_gap_probes so
+            # the next workers target the tightened interval.
+            if not found_cache_hit:
+                break
+
+    _fill_workers()
 
     try:
-        while high - low > 1:
-            print(
-                style.paint("[refine] ", style.bold, style.blue)
-                + f"interval=({low}, {high}) pending={len(pending)}",
-                flush=True,
-            )
-            while len(pending) < args.jobs:
-                blocked = seen | set(pending)
-                probes = choose_gap_probes(low, high, blocked, args.jobs - len(pending))
-                if not probes:
-                    break
-                for probe in probes:
-                    estimate = load_cached_estimate(args, cache, probe, style)
-                    if estimate is not None:
-                        seen.add(probe)
-                        if meets_security(estimate, args.security_bits):
-                            if probe > low:
-                                low = probe
-                                low_estimate = estimate
-                        else:
-                            if probe < high:
-                                high = probe
-                                high_estimate = estimate
-                        continue
-                    pending[probe] = launch_worker(args, probe, style, len(pending) + 1)
+        while pending:
+            for logq in wait_for_any_worker(pending):
+                process = pending.pop(logq)
+                estimate = finalize_worker_result(args, style, logq, process)
+                store_estimate(args, cache, logq, estimate)
+                _update_bounds(logq, estimate)
 
-                stale = [probe for probe in pending if probe <= low or probe >= high]
-                for probe in stale:
-                    process = pending.pop(probe)
-                    terminate_worker(style, probe, process)
+            # Drop any workers whose results can no longer improve the bounds.
+            _cancel_stale_workers()
+            _fill_workers()
 
-            if high - low <= 1:
-                break
-            if not pending:
-                break
-
-            for probe in wait_for_any_worker(pending):
-                process = pending.pop(probe)
-                estimate = finalize_worker_result(args, style, probe, process)
-                store_estimate(args, cache, probe, estimate)
-                seen.add(probe)
-                if meets_security(estimate, args.security_bits):
-                    if probe > low:
-                        low = probe
-                        low_estimate = estimate
-                else:
-                    if probe < high:
-                        high = probe
-                        high_estimate = estimate
-
-            stale = [probe for probe in pending if probe <= low or probe >= high]
-            for probe in stale:
-                process = pending.pop(probe)
-                terminate_worker(style, probe, process)
     except KeyboardInterrupt:
         terminate_pending_workers(style, pending, "interrupted")
         raise
 
-    return (low, low_estimate), (high, high_estimate)
+    if low == args.min_logq - 1:
+        return "no_admissible", None, None, high if high <= args.max_logq else None, high_estimate
+    if high == args.max_logq + 1:
+        return "max_reached", low, low_estimate, None, None
+    return "ok", low, low_estimate, high, high_estimate
 
 
 def print_result_block(best_logq: int, best_estimate, fail_logq: int, fail_estimate, args: argparse.Namespace, style: TerminalStyle) -> None:
@@ -597,32 +513,33 @@ def main() -> int:
     print_banner()
     print_run_header(args, style)
 
-    low_pair, high_pair, _ = find_bounds(args, cache, style)
-    if low_pair is None:
-        _, estimate = high_pair
-        result = build_search_result(args, status="no_admissible", fail_logq=high_pair[0], fail_estimate=estimate)
+    status, best_logq, best_estimate, fail_logq, fail_estimate = streaming_search(args, cache, style)
+
+    if status == "no_admissible":
+        result = build_search_result(
+            args, status="no_admissible", fail_logq=fail_logq, fail_estimate=fail_estimate
+        )
         if args.result_file is not None:
             save_result(args.result_file, result)
         print()
         print(style.paint("No admissible logq found in the requested range.", style.bold))
-        print(format_estimate(estimate))
+        if fail_estimate is not None:
+            print(format_estimate(fail_estimate))
         return 1
 
-    if high_pair is None:
-        logq, estimate = low_pair
-        result = build_search_result(args, status="max_reached", best_logq=logq, best_estimate=estimate)
+    if status == "max_reached":
+        result = build_search_result(
+            args, status="max_reached", best_logq=best_logq, best_estimate=best_estimate
+        )
         if args.result_file is not None:
             save_result(args.result_file, result)
         print()
         print(style.paint("Search limit reached.", style.bold))
         print("Security target is still met at the upper bound.")
-        print(f"largest tested logq: {logq}")
-        print(format_estimate(estimate))
+        print(f"largest tested logq: {best_logq}")
+        print(format_estimate(best_estimate))
         return 0
 
-    best_pair, fail_pair = binary_search(args, low_pair, high_pair, cache, style)
-    best_logq, best_estimate = best_pair
-    fail_logq, fail_estimate = fail_pair
     result = build_search_result(
         args,
         status="ok",

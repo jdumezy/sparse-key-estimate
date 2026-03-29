@@ -2,3 +2,7 @@
 __pycache__/
 *.pyc
 results_cache.json
+results_cache.tmp
+
+# build_logq_table.py transient output
+Precomputed-Tables/build/
