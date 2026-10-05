@@ -29,8 +29,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 
-LOGNS = [12, 13, 14, 15, 16]
-HS = [32, 64, 128, 192, 256, 512, 1024]
+LOGNS = [12, 13, 14, 15, 16, 17]
+HS = [32, 64, 128, 192, 256, 512, 1024, 2048]
 SECURITY_LEVELS = [128, 192, 256]
 
 SCRIPT_DIR = Path(__file__).resolve().parent
