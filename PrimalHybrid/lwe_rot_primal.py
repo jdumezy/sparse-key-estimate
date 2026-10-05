@@ -640,3 +640,35 @@ def primal_bdd(
         log_level=log_level,
         **kwds,
     )
+
+def estimate(
+    params: LWEParameters,
+    poly_degree=None,
+    red_shape_model=red_shape_model_default,
+    red_cost_model=red_cost_model_default,
+    log_level=1,
+    **kwds,
+):
+    """
+    Estimate the cost of the primal hybrid attack with rotations.
+
+    :param params: LWE parameters.
+    :param red_cost_model: How to cost lattice reduction
+    :param red_shape_model: How to model the shape of a reduced basis
+
+    """
+    if poly_degree is None:
+        # assume this is RLWE, so poly_degree = n
+        poly_degree = params.n
+
+    no_mitm_cost = rot_primal_hybrid(params, babai=False, mitm=False, poly_degree=poly_degree, red_shape_model=red_shape_model, red_cost_model=red_cost_model, log_level=log_level, **kwds)
+
+    # this corresponds to heuristic 2 in the paper, i.e., a full square root speed up.
+    # consistent with the lattice estimator's estimate() function, we only assume a mitm speedup is possible when using Babai as the CVP algorithm
+    mitm_cost = rot_primal_hybrid(params, babai=True, mitm=True, poly_degree=poly_degree, mitm_heuristic="square root", red_shape_model=red_shape_model, red_cost_model=red_cost_model, log_level=log_level, **kwds)
+
+    estimates = {
+        "bdd_hybrid": no_mitm_cost,
+        "bdd_mitm_hybrid": mitm_cost}
+
+    return estimates

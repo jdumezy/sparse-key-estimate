@@ -13,6 +13,7 @@ from sage.all import RR, log, oo
 from lattice_estimator.estimator import LWE, ND, RC
 
 from lwe_rot_primal import rot_primal_hybrid
+from estimator_version import ESTIMATOR_VERSION
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,7 @@ def attack_from_dict(data: dict) -> AttackEstimate:
 
 def estimate_to_dict(estimate: SparseSecurityEstimate) -> dict:
     return {
+        "estimator_version": ESTIMATOR_VERSION,
         "logn": estimate.logn,
         "logq": estimate.logq,
         "h": estimate.h,
@@ -123,6 +125,8 @@ def estimate_to_dict(estimate: SparseSecurityEstimate) -> dict:
 
 
 def estimate_from_dict(data: dict) -> SparseSecurityEstimate:
+    if data.get("estimator_version") != ESTIMATOR_VERSION:
+        raise ValueError("Estimate was produced by a different estimator version. Recompute it.")
     return SparseSecurityEstimate(
         logn=data["logn"],
         logq=data["logq"],
@@ -145,6 +149,13 @@ def estimate_sparse_security(
     poly_degree = params.n
 
     attack_costs = (
+        ("primal-projected-cvp", rot_primal_hybrid(
+            params,
+            babai=False,
+            mitm=False,
+            poly_degree=poly_degree,
+            red_cost_model=cost_model,
+        )),
         ("primal-without-mitm", rot_primal_hybrid(
             params,
             babai=True,

@@ -57,6 +57,7 @@ from sparse_estimates import (
     format_detailed_estimate,
     format_estimate,
 )
+from estimator_version import ESTIMATOR_VERSION
 
 DEFAULT_CACHE_PATH = Path("results_cache.json")
 
@@ -80,7 +81,7 @@ class TerminalStyle:
 
 
 def _cache_key(logn: int, h: int, sigma: float, logq: int) -> str:
-    return f"logn={logn}|h={h}|sigma={sigma:.17g}|logq={logq}"
+    return f"estimator={ESTIMATOR_VERSION}|logn={logn}|h={h}|sigma={sigma:.17g}|logq={logq}"
 
 
 def _script_path() -> Path:
@@ -148,6 +149,7 @@ def build_search_result(
     fail_estimate=None,
 ) -> dict:
     return {
+        "estimator_version": ESTIMATOR_VERSION,
         "status": status,
         "logn": args.logn,
         "h": args.h,

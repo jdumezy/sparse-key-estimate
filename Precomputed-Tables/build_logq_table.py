@@ -23,6 +23,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -33,6 +34,9 @@ HS = [32, 64, 128, 192, 256, 512, 1024]
 SECURITY_LEVELS = [128, 192, 256]
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR.parent / "PrimalHybrid"))
+
+from estimator_version import ESTIMATOR_VERSION
 
 _print_lock = threading.Lock()
 
@@ -97,6 +101,20 @@ def next_min_logq(current: int) -> int:
     return min(100, max(current + 1, current * 2))
 
 
+def read_matching_result(result_file: Path, expected: dict):
+    try:
+        result = json.loads(result_file.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(result, dict):
+        return None
+    if any(result.get(key) != value for key, value in expected.items()):
+        return None
+    if result.get("status") not in {"ok", "max_reached", "no_admissible"}:
+        return None
+    return result
+
+
 def run_search(
     args: argparse.Namespace, security_bits: int, logn: int, h: int, min_logq: int
 ) -> tuple[dict, Path]:
@@ -108,11 +126,21 @@ def run_search(
     result_file = log_dir / f"security_{security_bits}_min_{min_logq}.result.json"
     log_file = log_dir / f"security_{security_bits}_min_{min_logq}.log"
 
-    if not args.force_recompute and result_file.is_file():
-        result = json.loads(result_file.read_text())
-        result["log_file"] = str(log_file)
-        result["used_min_logq"] = min_logq
-        return result, log_file
+    expected = {
+        "estimator_version": ESTIMATOR_VERSION,
+        "logn": logn,
+        "h": h,
+        "sigma": args.sigma,
+        "target_security_bits": security_bits,
+        "min_logq": min_logq,
+        "max_logq": args.max_logq,
+    }
+    if not args.force_recompute:
+        result = read_matching_result(result_file, expected)
+        if result is not None:
+            result["log_file"] = str(log_file)
+            result["used_min_logq"] = min_logq
+            return result, log_file
 
     cmd = [
         sage_command(),
@@ -132,6 +160,8 @@ def run_search(
     if args.force_recompute:
         cmd.append("--force-recompute")
 
+    # A failed rerun must never fall back to a previous result file.
+    result_file.unlink(missing_ok=True)
     completed = subprocess.run(
         cmd,
         cwd=str(repo_root()),
@@ -142,16 +172,13 @@ def run_search(
     )
     log_file.write_text(completed.stdout)
 
-    if completed.returncode != 0 and not result_file.is_file():
+    result = read_matching_result(result_file, expected)
+    expected_exit = 1 if result is not None and result["status"] == "no_admissible" else 0
+    if result is None or completed.returncode != expected_exit:
         raise RuntimeError(
             f"search failed (exit {completed.returncode})\nlog: {log_file}\ncmd: {' '.join(cmd)}"
         )
-    if not result_file.is_file():
-        raise RuntimeError(
-            f"missing result file\nlog: {log_file}\ncmd: {' '.join(cmd)}"
-        )
 
-    result = json.loads(result_file.read_text())
     result["log_file"] = str(log_file)
     result["used_min_logq"] = min_logq
     return result, log_file

@@ -136,4 +136,4 @@ If you use the precomputed tables or the sparse-key search tool specifically, yo
 
 - Each candidate `logq` is evaluated in its own Sage subprocess. Evaluation time depends on the parameters and can range from seconds to many minutes.
 - The result block is compact and formatted for terminal output. Use `--color never` to disable styling and `--verbose` to print detailed per-attack costs for each point.
-- The reported security is the minimum among `primal-without-mitm`, `primal-mitm-square-root`, and `primal-mitm-estimator`.
+- The reported security is the minimum among `primal-projected-cvp`, `primal-without-mitm`, `primal-mitm-square-root`, and `primal-mitm-estimator`.
