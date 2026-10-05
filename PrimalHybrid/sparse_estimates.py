@@ -8,7 +8,7 @@ Adapted from the original sparse-estimation workflow used for
 
 from dataclasses import dataclass
 
-from sage.all import RR, log, oo
+from sage.all import RR, floor, log, oo
 
 from lattice_estimator.estimator import LWE, ND, RC
 
@@ -60,7 +60,13 @@ def _security_bits(cost):
 def format_bits(value) -> str:
     if value == oo:
         return "oo"
-    return str(RR(value).n(12))
+    return str(floor(RR(value)))
+
+
+def _serialize_bits(value) -> str:
+    if value == oo:
+        return "oo"
+    return repr(float(RR(value)))
 
 
 def format_attack_name(name: str) -> str:
@@ -84,7 +90,7 @@ def _json_value(value):
 def attack_to_dict(attack: AttackEstimate) -> dict:
     return {
         "name": attack.name,
-        "security_bits": format_bits(attack.security_bits),
+        "security_bits": _serialize_bits(attack.security_bits),
         "beta": _json_value(attack.beta),
         "d": _json_value(attack.d),
         "eta": _json_value(attack.eta),
@@ -118,7 +124,7 @@ def estimate_to_dict(estimate: SparseSecurityEstimate) -> dict:
         "logq": estimate.logq,
         "h": estimate.h,
         "sigma": estimate.sigma,
-        "best_security_bits": format_bits(estimate.best_security_bits),
+        "best_security_bits": _serialize_bits(estimate.best_security_bits),
         "best_attack": estimate.best_attack,
         "attacks": [attack_to_dict(attack) for attack in estimate.attacks],
     }

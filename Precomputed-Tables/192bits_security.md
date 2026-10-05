@@ -1,4 +1,5 @@
 # Ciphertext modulus table for 192 bits of security
+> Warning: this table is based on a previous version, and could be a few bits off.
 
 | logn \ h | 32 |  64 | 128 | 192 | 256 |  512 | 1024 |
 | -------- | -: | --: | --: | --: | --: | ---: | ---: |

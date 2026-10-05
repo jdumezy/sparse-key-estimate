@@ -31,6 +31,7 @@ def load_module(name, path):
 # They do not validate the numerical accuracy of the estimator.
 sage_all = types.ModuleType("sage.all")
 sage_all.RR = float
+sage_all.floor = math.floor
 sage_all.log = math.log
 sage_all.oo = math.inf
 estimator = types.ModuleType("lattice_estimator.estimator")
@@ -77,10 +78,21 @@ class AttackSelectionTests(unittest.TestCase):
 
     def test_versioned_estimate_round_trip(self):
         original = estimates.SparseSecurityEstimate(12, 58, 64, 3.2, 128.0, "test", ())
-        with patch.object(estimates, "format_bits", side_effect=str):
-            payload = estimates.estimate_to_dict(original)
+        payload = estimates.estimate_to_dict(original)
         self.assertEqual(payload["estimator_version"], ESTIMATOR_VERSION)
         self.assertEqual(estimates.estimate_from_dict(payload), original)
+
+    def test_fractional_security_survives_worker_and_cache_round_trips(self):
+        for bits in (127.7, math.nextafter(128.0, 0.0), 128.0, 128.7, math.inf):
+            with self.subTest(bits=bits):
+                attack = estimates.AttackEstimate("test", bits, 1, 2, 3, 4, "")
+                original = estimates.SparseSecurityEstimate(13, 214, 2048, 3.2, bits, "test", (attack,))
+                restored = original
+                for _ in range(2):
+                    restored = estimates.estimate_from_dict(json.loads(json.dumps(estimates.estimate_to_dict(restored))))
+                self.assertEqual(restored, original)
+                self.assertEqual(search.meets_security(restored, 128), bits != math.inf and bits >= 128)
+                self.assertEqual(estimates.format_bits(bits), "oo" if bits == math.inf else str(math.floor(bits)))
 
     def test_legacy_cache_key_is_ignored(self):
         args = argparse.Namespace(logn=12, h=64, sigma=3.2, force_recompute=False)
