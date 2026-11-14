@@ -1,5 +1,8 @@
 # Sparse Key Estimation
 
+> [!IMPORTANT]
+> **Superseded by [rlwe-params](https://github.com/jdumezy/rlwe-params)**, which covers sparse and dense secrets and uses both the lattice estimator and the rotated primal-hybrid attacks. This repository is no longer maintained.
+
 Sparse-key security estimation based on the rotated primal-hybrid estimator and the workflow behind the sparse estimates from [On the Concrete Hardness Gap Between MLWE and LWE](https://eprint.iacr.org/2026/279.pdf) by Tabitha Ogilvie.
 
 This repository is a fork adapted to focus only on sparse-key estimation.
